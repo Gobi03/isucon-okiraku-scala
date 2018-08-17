@@ -30,10 +30,10 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
 
   def convert(rs: WrappedResultSet): Tweet = {
     val tweet = Tweet(
-      userId = rs.get[Int](2),
-      text = rs.get[String](3),
-      createdAt = rs.get[Timestamp](4).toLocalDateTime,
-      userName = rs.get[String](5)
+      userId = rs.get[Int]("user_id"),
+      text = rs.get[String]("text"),
+      createdAt = rs.get[Timestamp]("created_at").toLocalDateTime,
+      userName = rs.get[String]("user_name")
     )
     tweet.copy(
       html = htmlify(tweet.text),
@@ -43,38 +43,38 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
 
   override def findFriend(userId: Int, limit: Int): Seq[Tweet] =
     appDBConnection.db.localTx { implicit session =>
-      sql"SELECT user_id, text, created_at, (SELECT name FROM users WHERE users.user_id = tweets.user_id) FROM tweets WHERE EXISTS (SELECT * FROM friends WHERE me = $userId AND friend = user_id) ORDER BY created_at DESC LIMIT $limit"
+      sql"SELECT user_id, text, created_at, (SELECT users.name FROM users WHERE users.id = tweets.user_id) AS user_name FROM tweets WHERE EXISTS (SELECT * FROM friends WHERE me = $userId AND friend = user_id) ORDER BY created_at DESC LIMIT $limit"
         .map(convert).list.apply()
     }
 
   override def findFriend(userId: Int, limit: Int, createdAt: String): Seq[Tweet] =
     appDBConnection.db.localTx { implicit session =>
-      sql"SELECT user_id, text, created_at, (SELECT name FROM users WHERE users.user_id = tweets.user_id) FROM tweets WHERE created_at < $createdAt AND EXISTS (SELECT * FROM friends WHERE me = $userId AND friend = user_id) ORDER BY created_at DESC LIMIT $limit"
+      sql"SELECT user_id, text, created_at, (SELECT users.name FROM users WHERE users.id = tweets.user_id) AS user_name FROM tweets WHERE created_at < $createdAt AND EXISTS (SELECT * FROM friends WHERE me = $userId AND friend = user_id) ORDER BY created_at DESC LIMIT $limit"
         .map(convert).list.apply()
     }
 
   override def search(query: String, limit: Int): Seq[Tweet] =
     appDBConnection.db.localTx { implicit session =>
-      sql"SELECT user_id, text, created_at, (SELECT name FROM users WHERE users.user_id = tweets.user_id) FROM tweets WHERE text like '%$query%' ORDER BY created_at DESC LIMIT $limit"
+      sql"SELECT user_id, text, created_at, (SELECT users.name FROM users WHERE users.id = tweets.user_id) AS user_name FROM tweets WHERE text like ${s"%$query%"} ORDER BY created_at DESC LIMIT $limit"
         .map(convert).list.apply()
     }
 
   override def search(query: String, createdAt: String, limit: Int): Seq[Tweet] =
     appDBConnection.db.localTx { implicit session =>
-      sql"SELECT user_id, text, created_at, (SELECT name FROM users WHERE users.user_id = tweets.user_id) FROM tweets WHERE created_at < $createdAt AND text like '%$query%' ORDER BY created_at DESC LIMIT $limit"
+      sql"SELECT user_id, text, created_at, (SELECT users.name FROM users WHERE users.id = tweets.user_id) AS user_name FROM tweets WHERE created_at < $createdAt AND text like ${s"%$query%"} ORDER BY created_at DESC LIMIT $limit"
         .map(convert).list.apply()
     }
 
   override def findByUserId(userId: Int, limit: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"SELECT user_id, text, created_at, (SELECT name FROM users WHERE users.user_id = tweets.user_id) FROM tweets WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT $limit"
+      sql"SELECT user_id, text, created_at, (SELECT users.name FROM users WHERE users.id = tweets.user_id) AS user_name FROM tweets WHERE user_id = $userId ORDER BY created_at DESC LIMIT $limit"
         .map(rs => convert(rs)).list.apply()
     }
   }
 
   override def findByUserId(userId: Int, createdAt: String, limit: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"SELECT user_id, text, created_at, (SELECT name FROM users WHERE users.user_id = tweets.user_id) FROM tweets WHERE user_id = ${userId} AND created_at < ${createdAt} ORDER BY created_at DESC LIMIT $limit"
+      sql"SELECT user_id, text, created_at, (SELECT users.name FROM users WHERE users.id = tweets.user_id) AS user_name FROM tweets WHERE user_id = $userId AND created_at < $createdAt ORDER BY created_at DESC LIMIT $limit"
         .map(rs => convert(rs)).list.apply()
     }
   }
