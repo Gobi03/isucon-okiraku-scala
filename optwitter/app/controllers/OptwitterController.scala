@@ -12,7 +12,7 @@ import play.api.data.Forms.{mapping, _}
 import play.api.libs.json.Json
 import play.api.libs.ws.{WSClient, WSRequest}
 import play.api.mvc.{AbstractController, AnyContent, ControllerComponents, Request}
-import repository.{AppDBConnection, TweetRepository, UserRepository}
+import repository.{AppDBConnection, FriendsRepository, TweetRepository, UserRepository}
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
@@ -47,7 +47,13 @@ object TweetRequest {
 }
 
 @Singleton
-class OptwitterController @Inject()(cc: ControllerComponents, userRepository: UserRepository, tweetRepository: TweetRepository, ws: WSClient, appDBConnection: AppDBConnection)(implicit assetsFinder: AssetsFinder) extends AbstractController(cc) {
+class OptwitterController @Inject()(
+  cc: ControllerComponents,
+  userRepository: UserRepository,
+  tweetRepository: TweetRepository,
+  friendsRepository: FriendsRepository,
+  ws: WSClient,
+  appDBConnection: AppDBConnection)(implicit assetsFinder: AssetsFinder) extends AbstractController(cc) {
 
   val PER_PAGE = 50
 
@@ -63,39 +69,27 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
   }
 
   def follow() = Action(parse.form(FollowRequest.form)) { implicit request =>
-    val userIdOpt = request.session.get("user_id")
-    if (userIdOpt.isEmpty) {
+    request.session.get("user_id").map(_.toInt).fold {
       Found("/")
-    } else {
-      val name = getUserName(userIdOpt.map(_.toInt))
-      val user = request.body.user
-
-      val complexRequest = ws.url(s"http://localhost:8081/${name}").addHttpHeaders("Accept" -> "application/json")
-      val data = Json.obj("user" -> user)
-      val response = Await.result(complexRequest.post(data), Duration.Inf)
-      if (response.status != 200) {
+    } { userId =>
+      userRepository.findByUserName(request.body.user).fold {
         InternalServerError("error")
-      } else {
-        Found(s"/${user}")
+      } { friend =>
+        friendsRepository.beFriend(userId, friend.userId)
+        Found(s"/${friend.userName}")
       }
     }
   }
 
   def unfollow() = Action(parse.form(FollowRequest.form)) { implicit request =>
-    val userIdOpt = request.session.get("user_id")
-    if (userIdOpt.isEmpty) {
+    request.session.get("user_id").map(_.toInt).fold {
       Found("/")
-    } else {
-      val name = getUserName(userIdOpt.map(_.toInt))
-      val user = request.body.user
-
-      val complexRequest = ws.url(s"http://localhost:8081/${name}").addHttpHeaders("Accept" -> "application/json")
-      val data = Json.obj("user" -> user)
-      val response = Await.result(complexRequest.withBody(data).delete(), Duration.Inf)
-      if (response.status != 200) {
+    } { userId =>
+      userRepository.findByUserName(request.body.user).fold {
         InternalServerError("error")
-      } else {
-        Found(s"/${user}")
+      } { friend =>
+        friendsRepository.wasFriend(userId, friend.userId)
+        Found(s"/${friend.userName}")
       }
     }
   }
@@ -117,10 +111,6 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
       sql"DELETE FROM tweets WHERE id > 100000".update.apply()
       sql"DELETE FROM users WHERE id > 1000".update.apply()
     }
-    val request: WSRequest = ws.url("http://localhost:8081/initialize")
-    val complexRequest: WSRequest = request.addHttpHeaders("Accept" -> "application/json")
-    val response = Await.result(complexRequest.get(), Duration.Inf)
-    if (response.status != 200) return false
     true
   }
 
@@ -129,28 +119,12 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
     val append = _append.getOrElse(0)
     request.session.get("user_id").map { id =>
       val name = getUserName(Some(id.toInt))
-      val friends = loadFriend(name)
-      val rows = if (until.length == 0) {
-        tweetRepository.findOrderByCreatedAtDesc()
+      val tweets = if (until.nonEmpty) {
+        tweetRepository.findFriendLimitedAtDesc(id.toInt, PER_PAGE)
       } else {
-        tweetRepository.findOrderByCreatedAtDesc(until)
+        tweetRepository.findFriendLimitedAtDesc(id.toInt, PER_PAGE, until)
       }
 
-      var tweets = Seq[Tweet]()
-      val b = new Breaks
-      b.breakable {
-        for (row <- rows) {
-          var tweet = new Tweet(row.userId)
-          tweet = tweet.copy(html = htmlify(row.text))
-          tweet = tweet.copy(time = row.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-          val friendName = getUserName(Some(row.userId))
-          tweet = tweet.copy(userName = friendName)
-          if (friends.contains(friendName)) {
-            tweets = tweets :+ tweet
-          }
-          if (tweets.size == PER_PAGE) b.break
-        }
-      }
       if (append == 0) {
         Ok(views.html.index(name, tweets)).removingFromSession("flush")
       } else {
@@ -240,9 +214,9 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
         if (friends.contains(user)) isFriend = true
       }
       val rows = if (until.length == 0) {
-        tweetRepository.findByUserIdOrderByCreatedAtDesc(userId)
+        tweetRepository.findByUserIdOrderByCreatedAtDescOnlyFriendsLimited(userId)
       } else {
-        tweetRepository.findByUserIdOrderByCreatedAtDesc(userId, until)
+        tweetRepository.findByUserIdOrderByCreatedAtDescOnlyFriendsLimited(userId, until)
       }
 
       var tweets = Seq[Tweet]()
@@ -293,13 +267,5 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
         Found("/").withSession("user_id" -> user.userId.toString)
       }
     }
-  }
-
-  def loadFriend(name: String): Seq[String] = {
-    val request: WSRequest = ws.url("http://localhost:8081/" + name)
-    val complexRequest: WSRequest = request.addHttpHeaders("Accept" -> "application/json")
-    val response = Await.result(complexRequest.get(), Duration.Inf)
-    val json = response.json
-    (json \ "friends").as[Seq[String]]
   }
 }
