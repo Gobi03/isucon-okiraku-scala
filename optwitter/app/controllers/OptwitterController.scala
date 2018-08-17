@@ -198,9 +198,11 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
     b.breakable {
       for (row <- rows) {
         var tweet = new Tweet(row.userId)
-        tweet = tweet.copy(html = htmlify(row.text))
-        tweet = tweet.copy(time = row.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-        tweet = tweet.copy(userName = getUserName(Some(row.userId)))
+        tweet = tweet.copy(
+          html = htmlify(row.text),
+          time = row.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+          userName = getUserName(Some(row.userId))
+        )
         if (row.text.contains(query)) {
           tweets = tweets :+ tweet
         }
@@ -227,9 +229,10 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
     val append = _append.getOrElse(0)
     val id = request.session.get("user_id").map(_.toInt)
     val name = getUserName(id)
-    var mypage: Boolean = false
-    if (user == name)
-      mypage = true
+
+    val mypage: Boolean =
+      user == name
+
     val userId_ = getUserId(user)
     if (userId_.isEmpty) {
       NotFound("not found")
@@ -240,11 +243,12 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
         val friends = loadFriend(name)
         if (friends.contains(user)) isFriend = true
       }
-      val rows = if (until.length == 0) {
-        tweetRepository.findByUserIdOrderByCreatedAtDesc(userId)
-      } else {
-        tweetRepository.findByUserIdOrderByCreatedAtDesc(userId, until)
-      }
+      val rows =
+        if (until.length == 0) {
+          tweetRepository.findByUserIdOrderByCreatedAtDesc(userId)
+        } else {
+          tweetRepository.findByUserIdOrderByCreatedAtDesc(userId, until)
+        }
 
       var tweets = Seq[Tweet]()
       val b = new Breaks
