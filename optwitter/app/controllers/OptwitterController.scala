@@ -120,8 +120,8 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
     val request: WSRequest = ws.url("http://localhost:8081/initialize")
     val complexRequest: WSRequest = request.addHttpHeaders("Accept" -> "application/json")
     val response = Await.result(complexRequest.get(), Duration.Inf)
-    if (response.status != 200) return false
-    true
+
+    response.status == 200
   }
 
   def index(_until: Option[String], _append: Option[Int]) = Action { implicit request =>
@@ -130,11 +130,12 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
     request.session.get("user_id").map { id =>
       val name = getUserName(Some(id.toInt))
       val friends = loadFriend(name)
-      val rows = if (until.length == 0) {
-        tweetRepository.findOrderByCreatedAtDesc()
-      } else {
-        tweetRepository.findOrderByCreatedAtDesc(until)
-      }
+      val rows =
+        if (until.length == 0) {
+          tweetRepository.findOrderByCreatedAtDesc()
+        } else {
+          tweetRepository.findOrderByCreatedAtDesc(until)
+        }
 
       var tweets = Seq[Tweet]()
       val b = new Breaks
@@ -148,7 +149,8 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
           if (friends.contains(friendName)) {
             tweets = tweets :+ tweet
           }
-          if (tweets.size == PER_PAGE) b.break
+          if (tweets.size == PER_PAGE)
+            b.break
         }
       }
       if (append == 0) {
@@ -228,7 +230,8 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
     val id = request.session.get("user_id").map(_.toInt)
     val name = getUserName(id)
     var mypage: Boolean = false
-    if (user == name) mypage = true
+    if (user == name)
+      mypage = true
     val userId_ = getUserId(user)
     if (userId_.isEmpty) {
       NotFound("not found")
