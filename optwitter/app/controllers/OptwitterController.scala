@@ -1,22 +1,15 @@
 package controllers
 
 import java.security.{MessageDigest, NoSuchAlgorithmException}
-import java.time.format.DateTimeFormatter
 
 import scalikejdbc._
 import com.sun.org.apache.xerces.internal.impl.dv.util.HexBin
 import javax.inject.{Inject, Singleton}
-import model.Tweet
 import play.api.data.Form
 import play.api.data.Forms.{mapping, _}
 import play.api.libs.json.Json
-import play.api.libs.ws.{WSClient, WSRequest}
 import play.api.mvc.{AbstractController, AnyContent, ControllerComponents, Request}
 import repository.{AppDBConnection, FriendsRepository, TweetRepository, UserRepository}
-
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
-import scala.util.control.Breaks
 
 case class LoginRequest(name: String, password: String)
 
@@ -52,7 +45,6 @@ class OptwitterController @Inject()(
   userRepository: UserRepository,
   tweetRepository: TweetRepository,
   friendsRepository: FriendsRepository,
-  ws: WSClient,
   appDBConnection: AppDBConnection)(implicit assetsFinder: AssetsFinder) extends AbstractController(cc) {
 
   val PER_PAGE = 50
@@ -119,12 +111,11 @@ class OptwitterController @Inject()(
     val append = _append.getOrElse(0)
     request.session.get("user_id").map { id =>
       val name = getUserName(Some(id.toInt))
-      val tweets = if (until.nonEmpty) {
-        tweetRepository.findFriendLimitedAtDesc(id.toInt, PER_PAGE)
+      val tweets = if (until.isEmpty) {
+        tweetRepository.findFriend(id.toInt, PER_PAGE)
       } else {
-        tweetRepository.findFriendLimitedAtDesc(id.toInt, PER_PAGE, until)
+        tweetRepository.findFriend(id.toInt, PER_PAGE, until)
       }
-
       if (append == 0) {
         Ok(views.html.index(name, tweets)).removingFromSession("flush")
       } else {
@@ -161,25 +152,10 @@ class OptwitterController @Inject()(
     val id = request.session.get("user_id").map(_.toInt)
     val name = getUserName(id)
 
-    val rows = if (until.length == 0) {
-      tweetRepository.findOrderByCreatedAtDesc()
+    val tweets = if (until.isEmpty) {
+      tweetRepository.search(query, PER_PAGE)
     } else {
-      tweetRepository.findOrderByCreatedAtDesc(until)
-    }
-
-    var tweets = Seq[Tweet]()
-    val b = new Breaks
-    b.breakable {
-      for (row <- rows) {
-        var tweet = new Tweet(row.userId)
-        tweet = tweet.copy(html = htmlify(row.text))
-        tweet = tweet.copy(time = row.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-        tweet = tweet.copy(userName = getUserName(Some(row.userId)))
-        if (row.text.contains(query)) {
-          tweets = tweets :+ tweet
-        }
-        if (tweets.size == PER_PAGE) b.break
-      }
+      tweetRepository.search(query, until, PER_PAGE)
     }
 
     if (append == 0) {
@@ -208,28 +184,11 @@ class OptwitterController @Inject()(
       NotFound("not found")
     } else {
       val userId = userId_.get
-      var isFriend: Boolean = false
-      if (name != null) {
-        val friends = loadFriend(name)
-        if (friends.contains(user)) isFriend = true
-      }
-      val rows = if (until.length == 0) {
-        tweetRepository.findByUserIdOrderByCreatedAtDescOnlyFriendsLimited(userId)
+      val isFriend: Boolean = userRepository.findByUserName(name).fold(false)(u => friendsRepository.isFriend(userId, u.userId))
+      val tweets = if (until.length == 0) {
+        tweetRepository.findByUserId(userId, PER_PAGE)
       } else {
-        tweetRepository.findByUserIdOrderByCreatedAtDescOnlyFriendsLimited(userId, until)
-      }
-
-      var tweets = Seq[Tweet]()
-      val b = new Breaks
-      b.breakable {
-        for (row <- rows) {
-          var tweet = new Tweet(row.userId)
-          tweet = tweet.copy(html = htmlify(row.text))
-          tweet = tweet.copy(time = row.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-          tweet = tweet.copy(userName = user)
-          tweets = tweets :+ tweet
-          if (tweets.size == PER_PAGE) b.break
-        }
+        tweetRepository.findByUserId(userId, until, PER_PAGE)
       }
       if (append == 0) {
         Ok(views.html.user(name, user, mypage, isFriend, tweets))
