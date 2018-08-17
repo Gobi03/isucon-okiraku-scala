@@ -53,7 +53,7 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
 
   override def findOrderByCreatedAtDescIndex(createdAt: String, userId: Int, friends: Seq[String], perPage: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"""SELECT * FROM tweets
+      sql"""SELECT tweets.* FROM tweets
            INNER JOIN users ON tweets.user_id = ${userId}
            WHERE users.name IN (${friends.map(str => s"'${str}").mkString(",")})
             AND created_at < ${createdAt}
