@@ -13,8 +13,8 @@ trait TweetRepository {
   def findByUserIdOrderByCreatedAtDesc(userId: Int, createdAt: String): Seq[Tweet]
   def create(userId: Int, text: String): Int
 
-  def findOrderByCreatedAtDescIndex(userId: Int, friends: Seq[String]): Seq[Tweet]
-  def findOrderByCreatedAtDescIndex(createdAt: String, userId: Int, friends: Seq[String]): Seq[Tweet]
+  def findOrderByCreatedAtDescIndex(userId: Int, friends: Seq[String], perPage: Int): Seq[Tweet]
+  def findOrderByCreatedAtDescIndex(createdAt: String, userId: Int, friends: Seq[String], perPage: Int): Seq[Tweet]
 }
 
 @Singleton
@@ -29,12 +29,12 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
     }
   }
 
-  override def findOrderByCreatedAtDescIndex(userId: Int, friends: Seq[String]): Seq[Tweet] = {
+  override def findOrderByCreatedAtDescIndex(userId: Int, friends: Seq[String], perPage: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
       sql"""SELECT tweets.* FROM tweets
            INNER JOIN users ON tweets.user_id = ${userId}
            WHERE users.name IN (${friends.map(str => s"'${str}").mkString(",")})
-              ORDER BY created_at DESC"""
+              ORDER BY created_at DESC LIMIT ${perPage}"""
         .map(rs => convert(rs)).list.apply()
     }
   }
@@ -46,13 +46,13 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
     }
   }
 
-  override def findOrderByCreatedAtDescIndex(createdAt: String, userId: Int, friends: Seq[String]): Seq[Tweet] = {
+  override def findOrderByCreatedAtDescIndex(createdAt: String, userId: Int, friends: Seq[String], perPage: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
       sql"""SELECT * FROM tweets
            INNER JOIN users ON tweets.user_id = ${userId}
            WHERE users.name IN (${friends.map(str => s"'${str}").mkString(",")})
             AND created_at < ${createdAt}
-           ORDER BY created_at DESC"""
+           ORDER BY created_at DESC LIMIT ${perPage}"""
         .map(rs => convert(rs)).list.apply()
     }
   }
