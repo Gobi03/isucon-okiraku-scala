@@ -129,12 +129,12 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
     val append = _append.getOrElse(0)
     request.session.get("user_id").map { id =>
       val name = getUserName(Some(id.toInt))
-      val friends = loadFriend(name)
+      val friends: Seq[String] = loadFriend(name)
       val rows =
         if (until.length == 0) {
-          tweetRepository.findOrderByCreatedAtDesc()
+          tweetRepository.findOrderByCreatedAtDescIndex(id.toInt, friends)
         } else {
-          tweetRepository.findOrderByCreatedAtDesc(until)
+          tweetRepository.findOrderByCreatedAtDescIndex(until, id.toInt, friends)
         }
 
       var tweets = Seq[Tweet]()
@@ -146,9 +146,7 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
           tweet = tweet.copy(time = row.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
           val friendName = getUserName(Some(row.userId))
           tweet = tweet.copy(userName = friendName)
-          if (friends.contains(friendName)) {
-            tweets = tweets :+ tweet
-          }
+          tweets = tweets :+ tweet
           if (tweets.size == PER_PAGE)
             b.break
         }

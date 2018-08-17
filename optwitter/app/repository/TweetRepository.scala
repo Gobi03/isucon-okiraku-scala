@@ -12,6 +12,9 @@ trait TweetRepository {
   def findByUserIdOrderByCreatedAtDesc(userId: Int): Seq[Tweet]
   def findByUserIdOrderByCreatedAtDesc(userId: Int, createdAt: String): Seq[Tweet]
   def create(userId: Int, text: String): Int
+
+  def findOrderByCreatedAtDescIndex(userId: Int, friends: Seq[String]): Seq[Tweet]
+  def findOrderByCreatedAtDescIndex(createdAt: String, userId: Int, friends: Seq[String]): Seq[Tweet]
 }
 
 @Singleton
@@ -26,9 +29,30 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
     }
   }
 
+  override def findOrderByCreatedAtDescIndex(userId: Int, friends: Seq[String]): Seq[Tweet] = {
+    appDBConnection.db.localTx{ implicit session =>
+      sql"""SELECT tweets.* FROM tweets
+           INNER JOIN users ON tweets.user_id = ${userId}
+           WHERE users.name IN (${friends.map(str => s"'${str}").mkString(",")})
+              ORDER BY created_at DESC"""
+        .map(rs => convert(rs)).list.apply()
+    }
+  }
+
   override def findOrderByCreatedAtDesc(createdAt: String): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"SELECT * FROM tweets WHERE created_at < ${createdAt} ORDER BY created_at DESC"
+      sql"SELECT tweets.* FROM tweets WHERE created_at < ${createdAt} ORDER BY created_at DESC"
+        .map(rs => convert(rs)).list.apply()
+    }
+  }
+
+  override def findOrderByCreatedAtDescIndex(createdAt: String, userId: Int, friends: Seq[String]): Seq[Tweet] = {
+    appDBConnection.db.localTx{ implicit session =>
+      sql"""SELECT * FROM tweets
+           INNER JOIN users ON tweets.user_id = ${userId}
+           WHERE users.name IN (${friends.map(str => s"'${str}").mkString(",")})
+            AND created_at < ${createdAt}
+           ORDER BY created_at DESC"""
         .map(rs => convert(rs)).list.apply()
     }
   }
