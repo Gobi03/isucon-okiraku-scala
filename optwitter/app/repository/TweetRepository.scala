@@ -7,8 +7,8 @@ import model.Tweet
 import scalikejdbc._
 
 trait TweetRepository {
-  def findOrderByCreatedAtDesc(): Seq[Tweet]
-  def findOrderByCreatedAtDesc(until: String): Seq[Tweet]
+  def findOrderByCreatedAtDescSearch(query: String, limit: Int): Seq[Tweet]
+  def findOrderByCreatedAtDescSearch(until: String, query: String, limit: Int): Seq[Tweet]
   def findByUserIdOrderByCreatedAtDesc(userId: Int, limit: Int): Seq[Tweet]
   def findByUserIdOrderByCreatedAtDesc(userId: Int, createdAt: String, limit: Int): Seq[Tweet]
   def create(userId: Int, text: String): Int
@@ -22,9 +22,11 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
 
   def convert(rs: WrappedResultSet): Tweet = Tweet(rs.get[Int](2), rs.get[String](3), rs.get[Timestamp](4).toLocalDateTime)
 
-  override def findOrderByCreatedAtDesc(): Seq[Tweet] = {
+  override def findOrderByCreatedAtDescSearch(query: String, limit: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"SELECT * FROM tweets ORDER BY created_at DESC"
+      sql"""SELECT * FROM tweets
+             WHERE tweets.text LIKE '%${query}%'
+           ORDER BY created_at DESC LIMIT ${limit}"""
         .map(rs => convert(rs)).list.apply()
     }
   }
@@ -39,9 +41,12 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
     }
   }
 
-  override def findOrderByCreatedAtDesc(createdAt: String): Seq[Tweet] = {
+  override def findOrderByCreatedAtDescSearch(createdAt: String, query: String, limit: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"SELECT tweets.* FROM tweets WHERE created_at < ${createdAt} ORDER BY created_at DESC"
+      sql"""SELECT tweets.* FROM tweets
+            WHERE created_at < ${createdAt}
+              AND tweets.text LIKE '%${query}%'
+            ORDER BY created_at DESC LIMIT ${limit}"""
         .map(rs => convert(rs)).list.apply()
     }
   }
