@@ -9,8 +9,8 @@ import scalikejdbc._
 trait TweetRepository {
   def findOrderByCreatedAtDesc(): Seq[Tweet]
   def findOrderByCreatedAtDesc(until: String): Seq[Tweet]
-  def findByUserIdOrderByCreatedAtDesc(userId: Int): Seq[Tweet]
-  def findByUserIdOrderByCreatedAtDesc(userId: Int, createdAt: String): Seq[Tweet]
+  def findByUserIdOrderByCreatedAtDesc(userId: Int, limit: Int): Seq[Tweet]
+  def findByUserIdOrderByCreatedAtDesc(userId: Int, createdAt: String, limit: Int): Seq[Tweet]
   def create(userId: Int, text: String): Int
 
   def findOrderByCreatedAtDescIndex(userId: Int, friends: Seq[String], perPage: Int): Seq[Tweet]
@@ -57,16 +57,20 @@ class TweetRepositoryImpl @Inject()(appDBConnection: AppDBConnection) extends Tw
     }
   }
 
-  override def findByUserIdOrderByCreatedAtDesc(userId: Int): Seq[Tweet] = {
+  override def findByUserIdOrderByCreatedAtDesc(userId: Int, limit: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"SELECT * FROM tweets WHERE user_id = ${userId} ORDER BY created_at DESC"
+      sql"""SELECT * FROM tweets
+           WHERE user_id = ${userId}
+           ORDER BY created_at DESC LIMIT ${limit}"""
         .map(rs => convert(rs)).list.apply()
     }
   }
 
-  override def findByUserIdOrderByCreatedAtDesc(userId: Int, createdAt: String): Seq[Tweet] = {
+  override def findByUserIdOrderByCreatedAtDesc(userId: Int, createdAt: String, limit: Int): Seq[Tweet] = {
     appDBConnection.db.localTx{ implicit session =>
-      sql"SELECT * FROM tweets WHERE user_id = ${userId} AND created_at < ${createdAt} ORDER BY created_at DESC"
+      sql"""SELECT * FROM tweets
+           WHERE user_id = ${userId} AND created_at < ${createdAt}
+           ORDER BY created_at DESC LIMIT ${limit}"""
         .map(rs => convert(rs)).list.apply()
     }
   }

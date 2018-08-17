@@ -245,9 +245,9 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
       }
       val rows =
         if (until.length == 0) {
-          tweetRepository.findByUserIdOrderByCreatedAtDesc(userId)
+          tweetRepository.findByUserIdOrderByCreatedAtDesc(userId, PER_PAGE)
         } else {
-          tweetRepository.findByUserIdOrderByCreatedAtDesc(userId, until)
+          tweetRepository.findByUserIdOrderByCreatedAtDesc(userId, until, PER_PAGE)
         }
 
       var tweets = Seq[Tweet]()
@@ -259,7 +259,6 @@ class OptwitterController @Inject()(cc: ControllerComponents, userRepository: Us
           tweet = tweet.copy(time = row.createdAt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
           tweet = tweet.copy(userName = user)
           tweets = tweets :+ tweet
-          if (tweets.size == PER_PAGE) b.break
         }
       }
       if (append == 0) {
